@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Bar Code Hunter</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #1a1a2e;
+      color: #fff;
+      font-family: 'Courier New', Courier, monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    #game-container {
+      position: relative;
+      width: min(96vw, 800px);
+      height: min(70vh, 500px);
+      background: linear-gradient(to bottom, #16213e 0%, #0f3460 70%, #1e5128 70%, #191a19 100%);
+      border: 4px solid #e94560;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    }
+
+    /* HUD Header */
+    #hud {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      right: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-size: clamp(14px, 3.5vw, 20px);
+      font-weight: bold;
+      z-index: 10;
+      text-shadow: 2px 2px #000;
+      pointer-events: none;
+    }
+
+    /* Target (Drink) Styling */
+    .target {
+      position: absolute;
+      width: 110px;
+      min-height: 130px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 6px 4px;
+      transition: transform 0.08s linear;
+      z-index: 5;
+    }
+
+    .target:active {
+      transform: scale(0.92);
+    }
+
+    .drink-icon {
+      font-size: 42px;
+      line-height: 1;
+      filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.5));
+      pointer-events: none;
+    }
+
+    .drink-name {
+      font-size: 11px;
+      font-weight: bold;
+      color: #fff;
+      background: rgba(0,0,0,0.75);
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-top: 3px;
+      text-align: center;
+      max-width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+    }
+
+    .barcode {
+      font-family: 'Libre Barcode 128', 'Courier New', monospace;
+      font-size: 22px;
+      line-height: 1;
+      color: #000;
+      background: #fff;
+      padding: 2px 6px 0;
+      margin-top: 3px;
+      border-radius: 2px;
+      letter-spacing: 1px;
+      pointer-events: none;
+      border: 1px solid #333;
+    }
+
+    .barcode-text {
+      font-size: 9px;
+      color: #00ffcc;
+      background: rgba(0,0,0,0.8);
+      padding: 1px 4px;
+      border-radius: 2px;
+      margin-top: 1px;
+      letter-spacing: 0.5px;
+      pointer-events: none;
+    }
+
+    /* Target hit animation */
+    .target.hit .drink-icon {
+      transform: scaleY(-1) rotate(20deg);
+      filter: grayscale(100%) brightness(200%);
+    }
+    .target.hit .drink-name,
+    .target.hit .barcode,
+    .target.hit .barcode-text {
+      opacity: 0.3;
+    }
+
+    /* Scanner Status Banner */
+    #scanner-bar {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.85);
+      border: 1px solid #00ffcc;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: clamp(11px, 2.8vw, 14px);
+      color: #00ffcc;
+      z-index: 10;
+      max-width: 90%;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+    }
+
+    /* Game Messages & Screens */
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.90);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      padding: 12px;
+      text-align: center;
+      overflow-y: auto;
+    }
+
+    .overlay h1 {
+      margin: 0 0 8px;
+      font-size: clamp(20px, 5.5vw, 30px);
+    }
+
+    .overlay p {
+      max-width: 92%;
+      line-height: 1.4;
+      font-size: clamp(12px, 3vw, 15px);
+      margin: 0 0 6px;
+    }
+
+    button {
+      background-color: #e94560;
+      color: white;
+      border: none;
+      padding: 12px 22px;
+      font-size: clamp(14px, 3.5vw, 17px);
+      font-family: inherit;
+      cursor: pointer;
+      border-radius: 6px;
+      margin: 6px 4px;
+      font-weight: bold;
+      min-height: 44px;
+    }
+
+    button:hover, button:active {
+      background-color: #ff6b81;
+    }
+
+    button.secondary {
+      background-color: #0f3460;
+      border: 1px solid #00ffcc;
+      color: #00ffcc;
+    }
+
+    button.secondary:hover, button.secondary:active {
+      background-color: #16213e;
+    }
+
+    button.danger {
+      background-color: #8b0000;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    #touch-hint {
+      position: absolute;
+      bottom: 42px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      color: rgba(255,255,255,0.55);
+      z-index: 9;
+      pointer-events: none;
+    }
+
+    /* Admin Panel */
+    #admin-panel {
+      width: 100%;
+      max-width: 420px;
+      text-align: left;
+      padding: 0 8px;
+    }
+
+    #admin-panel h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      color: #00ffcc;
+      text-align: center;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .form-row input, .form-row select {
+      flex: 1;
+      min-width: 80px;
+      padding: 10px;
+      font-size: 14px;
+      font-family: inherit;
+      border: 1px solid #00ffcc;
+      border-radius: 4px;
+      background: #0f3460;
+      color: #fff;
+      outline: none;
+    }
+
+    .form-row input::placeholder {
+      color: rgba(255,255,255,0.45);
+    }
+
+    .form-row input:focus, .form-row select:focus {
+      border-color: #e94560;
+    }
+
+    #drink-list {
+      max-height: 160px;
+      overflow-y: auto;
+      margin: 10px 0;
+      border: 1px solid #333;
+      border-radius: 6px;
+      background: rgba(0,0,0,0.4);
+    }
+
+    .drink-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      border-bottom: 1px solid #333;
+      font-size: 13px;
+      gap: 8px;
+    }
+
+    .drink-item:last-child {
+      border-bottom: none;
+    }
+
+    .drink-item .info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .drink-item .info .name {
+      font-weight: bold;
+      color: #fff;
+    }
+
+    .drink-item .info .code {
+      font-size: 11px;
+      color: #00ffcc;
+    }
+
+    .drink-item button {
+      padding: 6px 10px;
+      font-size: 12px;
+      min-height: 32px;
+      margin: 0;
+    }
+
+    .admin-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .emoji-picker {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 8px;
+      justify-content: center;
+    }
+
+    .emoji-btn {
+      width: 36px;
+      height: 36px;
+      font-size: 20px;
+      padding: 0;
+      background: #0f3460;
+      border: 1px solid #333;
+      border-radius: 4px;
+      cursor: pointer;
+      min-height: 36px;
+    }
+
+    .emoji-btn.selected {
+      border-color: #e94560;
+      background: #e94560;
+    }
+
+    .status-msg {
+      text-align: center;
+      font-size: 12px;
+      color: #00ffcc;
+      min-height: 18px;
+      margin: 4px 0;
+    }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <div id="game-container">
+    <!-- Heads-Up Display -->
+    <div id="hud">
+      <div>SCORE: <span id="score">0</span></div>
+      <div>DRINKS: <span id="remaining">10</span></div>
+      <div>TIME: <span id="timer">30</span>s</div>
+    </div>
+
+    <!-- Scanner Feed Status -->
+    <div id="scanner-bar">
+      Scanner Ready: <span id="last-code">Waiting for scan...</span>
+    </div>
+
+    <div id="touch-hint">Tap drink or scan its barcode</div>
+
+    <!-- Start Overlay -->
+    <div id="start-screen" class="overlay">
+      <h1>🍺 BAR CODE HUNTER 🎯</h1>
+      <p>
+        Scan the barcode under each flying drink with your scanner (or tap the drink on a touch screen).
+      </p>
+      <p style="color:#00ffcc; font-size:0.9em;">
+        Each drink has its own barcode — match it!
+      </p>
+      <div>
+        <button id="start-btn">START GAME</button>
+        <button id="admin-btn" class="secondary">ADMIN PANEL</button>
+      </div>
+    </div>
+
+    <!-- Admin Panel Overlay -->
+    <div id="admin-screen" class="overlay hidden">
+      <div id="admin-panel">
+        <h2>⚙️ Bar Admin Panel</h2>
+        <p style="text-align:center; font-size:12px; color:#aaa; margin-bottom:10px;">
+          Add custom drinks for your bar. Changes save automatically.
+        </p>
+
+        <div class="emoji-picker" id="emoji-picker"></div>
+
+        <div class="form-row">
+          <input type="text" id="drink-name" placeholder="Drink name" maxlength="20">
+          <input type="text" id="drink-code" placeholder="Barcode (e.g. BEER-001)" maxlength="16">
+        </div>
+
+        <div class="admin-actions">
+          <button id="add-drink-btn">➕ ADD DRINK</button>
+          <button id="reset-drinks-btn" class="danger">↺ RESET DEFAULTS</button>
+        </div>
+
+        <div class="status-msg" id="admin-status"></div>
+
+        <div id="drink-list"></div>
+
+        <div class="admin-actions">
+          <button id="back-to-start-btn" class="secondary">← BACK TO GAME</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Over Overlay -->
+    <div id="game-over-screen" class="overlay hidden">
+      <h1 id="game-over-title">GAME OVER</h1>
+      <p>Final Score: <span id="final-score">0</span></p>
+      <button id="restart-btn">PLAY AGAIN</button>
+      <button id="admin-from-end-btn" class="secondary">ADMIN PANEL</button>
+    </div>
+  </div>
+
+  <script>
+    // --- Game Configuration ---
+    const GAME_DURATION = 30;
+    const TOTAL_DRINKS = 10;
+    const STORAGE_KEY = 'barcodeHunterDrinks';
+
+    const DEFAULT_DRINKS = [
+      { name: "Cold Beer",     icon: "🍺", code: "BEER-001" },
+      { name: "Red Wine",      icon: "🍷", code: "WINE-002" },
+      { name: "Martini",       icon: "🍸", code: "MRTNI-03" },
+      { name: "Tropical",      icon: "🍹", code: "TROP-004" },
+      { name: "Champagne",     icon: "🍾", code: "CHMP-005" },
+      { name: "Cheers!",       icon: "🥂", code: "CHR-006"  },
+      { name: "Sake",          icon: "🍶", code: "SAKE-007" },
+      { name: "Whiskey",       icon: "🥃", code: "WSKY-008" },
+      { name: "Mojito",        icon: "🧉", code: "MOJT-009" },
+      { name: "Root Beer",     icon: "🥤", code: "ROOT-010" }
+    ];
+
+    const EMOJI_OPTIONS = ['🍺','🍷','🍸','🍹','🍾','🥂','🍶','🥃','🧉','🥤','🧃','☕','🍵','🧋','🥛','🍾','🍻','🥃'];
+
+    let drinks = loadDrinks();
+    let selectedEmoji = '🍺';
+    let score = 0;
+    let remainingDrinks = TOTAL_DRINKS;
+    let timeLeft = GAME_DURATION;
+    let timerInterval = null;
+    let isGameActive = false;
+    let activeTarget = null;
+    let activeCode = null;
+    let scannerBuffer = "";
+    let scannerTimeout = null;
+
+    // --- DOM ---
+    const gameContainer = document.getElementById('game-container');
+    const scoreEl = document.getElementById('score');
+    const remainingEl = document.getElementById('remaining');
+    const timerEl = document.getElementById('timer');
+    const lastCodeEl = document.getElementById('last-code');
+    const startScreen = document.getElementById('start-screen');
+    const adminScreen = document.getElementById('admin-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const finalScoreEl = document.getElementById('final-score');
+    const startBtn = document.getElementById('start-btn');
+    const restartBtn = document.getElementById('restart-btn');
+    const adminBtn = document.getElementById('admin-btn');
+    const adminFromEndBtn = document.getElementById('admin-from-end-btn');
+    const backToStartBtn = document.getElementById('back-to-start-btn');
+    const addDrinkBtn = document.getElementById('add-drink-btn');
+    const resetDrinksBtn = document.getElementById('reset-drinks-btn');
+    const drinkNameInput = document.getElementById('drink-name');
+    const drinkCodeInput = document.getElementById('drink-code');
+    const drinkListEl = document.getElementById('drink-list');
+    const adminStatus = document.getElementById('admin-status');
+    const emojiPicker = document.getElementById('emoji-picker');
+
+    // --- Storage ---
+    function loadDrinks() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+      return JSON.parse(JSON.stringify(DEFAULT_DRINKS));
+    }
+
+    function saveDrinks() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(drinks));
+    }
+
+    // --- Admin UI ---
+    function buildEmojiPicker() {
+      emojiPicker.innerHTML = '';
+      EMOJI_OPTIONS.forEach(emoji => {
+        const btn = document.createElement('button');
+        btn.className = 'emoji-btn' + (emoji === selectedEmoji ? ' selected' : '');
+        btn.textContent = emoji;
+        btn.addEventListener('click', () => {
+          selectedEmoji = emoji;
+          buildEmojiPicker();
+        });
+        emojiPicker.appendChild(btn);
+      });
+    }
+
+    function renderDrinkList() {
+      drinkListEl.innerHTML = '';
+      if (drinks.length === 0) {
+        drinkListEl.innerHTML = '<div class="drink-item"><span style="color:#888">No drinks yet. Add some!</span></div>';
+        return;
+      }
+      drinks.forEach((d, i) => {
+        const item = document.createElement('div');
+        item.className = 'drink-item';
+        item.innerHTML = `
+          <div class="info">
+            <span class="name">${d.icon} ${d.name}</span><br>
+            <span class="code">${d.code}</span>
+          </div>
+        `;
+        const delBtn = document.createElement('button');
+        delBtn.className = 'danger';
+        delBtn.textContent = '✕';
+        delBtn.addEventListener('click', () => {
+          drinks.splice(i, 1);
+          saveDrinks();
+          renderDrinkList();
+          setAdminStatus('Drink removed');
+        });
+        item.appendChild(delBtn);
+        drinkListEl.appendChild(item);
+      });
+    }
+
+    function setAdminStatus(msg) {
+      adminStatus.textContent = msg;
+      setTimeout(() => { adminStatus.textContent = ''; }, 2200);
+    }
+
+    function showAdmin() {
+      isGameActive = false;
+      clearInterval(timerInterval);
+      removeCurrentTarget();
+      startScreen.classList.add('hidden');
+      gameOverScreen.classList.add('hidden');
+      adminScreen.classList.remove('hidden');
+      buildEmojiPicker();
+      renderDrinkList();
+    }
+
+    function hideAdmin() {
+      adminScreen.classList.add('hidden');
+      startScreen.classList.remove('hidden');
+    }
+
+    addDrinkBtn.addEventListener('click', () => {
+      const name = drinkNameInput.value.trim();
+      let code = drinkCodeInput.value.trim().toUpperCase().replace(/\s+/g, '-');
+
+      if (!name) {
+        setAdminStatus('Enter a drink name');
+        return;
+      }
+      if (!code) {
+        // auto-generate simple code from name
+        code = name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) + '-' + String(Date.now()).slice(-3);
+      }
+      if (drinks.some(d => d.code === code)) {
+        setAdminStatus('That barcode already exists');
+        return;
+      }
+
+      drinks.push({ name, icon: selectedEmoji, code });
+      saveDrinks();
+      drinkNameInput.value = '';
+      drinkCodeInput.value = '';
+      renderDrinkList();
+      setAdminStatus(`Added: ${name} (${code})`);
+    });
+
+    resetDrinksBtn.addEventListener('click', () => {
+      if (confirm('Reset all drinks to the default list?')) {
+        drinks = JSON.parse(JSON.stringify(DEFAULT_DRINKS));
+        saveDrinks();
+        renderDrinkList();
+        setAdminStatus('Reset to defaults');
+      }
+    });
+
+    adminBtn.addEventListener('click', showAdmin);
+    adminFromEndBtn.addEventListener('click', showAdmin);
+    backToStartBtn.addEventListener('click', hideAdmin);
+
+    // Touch support for main buttons
+    [startBtn, restartBtn, adminBtn, adminFromEndBtn, backToStartBtn, addDrinkBtn, resetDrinksBtn].forEach(btn => {
+      btn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        btn.click();
+      }, { passive: false });
+    });
+
+    startBtn.addEventListener('click', startGame);
+    restartBtn.addEventListener('click', startGame);
+
+    // Scanner keyboard emulation
+    window.addEventListener('keydown', (e) => {
+      if (!isGameActive) return;
+      if (e.key === 'Enter') {
+        if (scannerBuffer.trim().length > 0) {
+          processScan(scannerBuffer.trim());
+          scannerBuffer = "";
+        }
+      } else if (e.key.length === 1) {
+        scannerBuffer += e.key;
+        clearTimeout(scannerTimeout);
+        scannerTimeout = setTimeout(() => { scannerBuffer = ""; }, 180);
+      }
+    });
+
+    // --- Game Logic ---
+    function startGame() {
+      if (drinks.length === 0) {
+        alert('Add at least one drink in the Admin Panel first!');
+        showAdmin();
+        return;
+      }
+
+      score = 0;
+      remainingDrinks = TOTAL_DRINKS;
+      timeLeft = GAME_DURATION;
+      isGameActive = true;
+      activeCode = null;
+
+      scoreEl.textContent = score;
+      remainingEl.textContent = remainingDrinks;
+      timerEl.textContent = timeLeft;
+      lastCodeEl.textContent = "Waiting for scan...";
+
+      startScreen.classList.add('hidden');
+      gameOverScreen.classList.add('hidden');
+      adminScreen.classList.add('hidden');
+
+      removeCurrentTarget();
+      clearInterval(timerInterval);
+
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        timerEl.textContent = timeLeft;
+        if (timeLeft <= 0) endGame(false);
+      }, 1000);
+
+      spawnTarget();
+    }
+
+    function spawnTarget() {
+      if (!isGameActive || remainingDrinks <= 0) {
+        if (remainingDrinks <= 0) endGame(true);
+        return;
+      }
+
+      removeCurrentTarget();
+
+      const drink = drinks[Math.floor(Math.random() * drinks.length)];
+      activeCode = drink.code;
+
+      const target = document.createElement('div');
+      target.className = 'target';
+      target.dataset.code = drink.code;
+
+      target.innerHTML = `
+        <div class="drink-icon">${drink.icon}</div>
+        <div class="drink-name">${drink.name}</div>
+        <div class="barcode">*${drink.code}*</div>
+        <div class="barcode-text">${drink.code}</div>
+      `;
+
+      const maxX = Math.max(0, gameContainer.clientWidth - 120);
+      const maxY = Math.max(0, (gameContainer.clientHeight * 0.55) - 140);
+      const startX = Math.floor(Math.random() * maxX);
+      const startY = Math.floor(Math.random() * maxY);
+
+      target.style.left = `${startX}px`;
+      target.style.top = `${startY}px`;
+
+      const hitHandler = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        hitTarget();
+      };
+      target.addEventListener('pointerdown', hitHandler, { passive: false });
+      target.addEventListener('touchstart', hitHandler, { passive: false });
+      target.addEventListener('mousedown', hitHandler);
+
+      gameContainer.appendChild(target);
+      activeTarget = target;
+      animateTarget(target);
+    }
+
+    function animateTarget(target) {
+      if (!activeTarget || activeTarget !== target) return;
+
+      const maxX = Math.max(0, gameContainer.clientWidth - 120);
+      const maxY = Math.max(0, (gameContainer.clientHeight * 0.55) - 140);
+      const nextX = Math.floor(Math.random() * maxX);
+      const nextY = Math.floor(Math.random() * maxY);
+
+      target.style.transition = 'left 1.6s ease-in-out, top 1.6s ease-in-out';
+      target.style.left = `${nextX}px`;
+      target.style.top = `${nextY}px`;
+
+      target.moveTimeout = setTimeout(() => {
+        if (activeTarget === target) animateTarget(target);
+      }, 1600);
+    }
+
+    function processScan(code) {
+      let cleaned = code;
+      if (code.includes('.')) cleaned = code.split('.').pop();
+      cleaned = cleaned.trim().toUpperCase();
+
+      lastCodeEl.textContent = cleaned.substring(0, 18) + (cleaned.length > 18 ? '…' : '');
+
+      if (!activeTarget || !isGameActive || !activeCode) return;
+
+      const targetCode = activeCode.toUpperCase();
+      if (cleaned === targetCode || cleaned.includes(targetCode) || targetCode.includes(cleaned)) {
+        hitTarget();
+        lastCodeEl.textContent = `HIT: ${targetCode}`;
+      } else {
+        lastCodeEl.textContent = `MISS (${cleaned})`;
+        if (activeTarget) {
+          activeTarget.style.filter = 'brightness(1.6)';
+          setTimeout(() => { if (activeTarget) activeTarget.style.filter = ''; }, 150);
+        }
+      }
+    }
+
+    function hitTarget() {
+      if (!activeTarget || activeTarget.classList.contains('hit')) return;
+
+      activeTarget.classList.add('hit');
+      score += 100;
+      remainingDrinks--;
+      scoreEl.textContent = score;
+      remainingEl.textContent = remainingDrinks;
+
+      setTimeout(() => {
+        removeCurrentTarget();
+        if (remainingDrinks > 0) spawnTarget();
+        else endGame(true);
+      }, 280);
+    }
+
+    function removeCurrentTarget() {
+      if (activeTarget) {
+        clearTimeout(activeTarget.moveTimeout);
+        activeTarget.remove();
+        activeTarget = null;
+        activeCode = null;
+      }
+    }
+
+    function endGame(cleared) {
+      isGameActive = false;
+      clearInterval(timerInterval);
+      removeCurrentTarget();
+      document.getElementById('game-over-title').textContent = cleared ? "ALL DRINKS CLEARED!" : "TIME'S UP!";
+      finalScoreEl.textContent = score;
+      gameOverScreen.classList.remove('hidden');
+    }
+
+    // Init emoji picker (in case admin is opened later)
+    buildEmojiPicker();
+  </script>
+</body>
+</html>
